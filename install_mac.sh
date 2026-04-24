@@ -63,7 +63,9 @@ if [ -f "VoiceInput" ]; then
   "hotkey_mode": "hold",
   "hotkey": "ctrl+f9",
   "chinese_output": "traditional",
-  "cpu_threads": 0
+  "cpu_threads": 0,
+  "start_at_login": false,
+  "app_language": "en"
 }
 JSON
     else

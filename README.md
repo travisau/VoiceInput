@@ -12,6 +12,8 @@ Voice Input runs quietly from the system tray / menu bar. Hold a hotkey, speak, 
 - Hold-to-record or toggle recording mode
 - Clipboard-only or auto-paste output
 - Traditional / Simplified Chinese conversion
+- English / Chinese interface language
+- Optional start at login
 - Local model cache stored beside the app
 
 ## Author
@@ -104,6 +106,8 @@ Mode: Hold to record
 Output: Copy to clipboard
 Model: large-v3
 Device: CPU
+Start at login: Off
+Interface language: English
 ```
 
 The first model download can be large. `large-v3` is about 3GB.

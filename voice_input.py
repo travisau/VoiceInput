@@ -43,6 +43,8 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 import sys as _sys
 if getattr(_sys, "frozen", False):
     BASE_DIR = os.path.dirname(_sys.executable)
+elif os.path.basename(BASE_DIR) == "install_files" and os.path.basename(os.path.dirname(BASE_DIR)) == "Data":
+    BASE_DIR = os.path.abspath(os.path.join(BASE_DIR, "..", ".."))
 
 CONFIG_FILE = os.path.join(BASE_DIR, "config.json")
 
@@ -61,7 +63,9 @@ DEFAULT_CONFIG = {
     "hotkey_mode":    "hold",
     "hotkey":         "ctrl+f9",
     "chinese_output": "traditional",  # traditional / simplified / none
-    "cpu_threads":    0               # 0 = auto (use all cores)
+    "cpu_threads":    0,              # 0 = auto (use all cores)
+    "start_at_login": False,
+    "app_language":   "en"            # en / zh
 }
 
 def load_config():
@@ -80,6 +84,155 @@ def load_config():
 def save_config(cfg):
     with open(CONFIG_FILE, "w", encoding="utf-8") as f:
         json.dump(cfg, f, indent=2, ensure_ascii=False)
+
+TEXT = {
+    "en": {
+        "settings_title": "Voice Input Settings",
+        "model": "Whisper Model",
+        "download": "Download",
+        "redownload": "Re-download",
+        "resume_download": "Resume Download",
+        "delete_model": "Delete Model",
+        "language": "Recognition Language",
+        "lang_auto": "Auto detect (recommended)",
+        "lang_zh": "Chinese / Cantonese",
+        "lang_en": "English",
+        "chinese_output": "Chinese Output",
+        "traditional": "Traditional Chinese",
+        "simplified": "Simplified Chinese",
+        "no_conversion": "No conversion",
+        "after_transcription": "After transcription",
+        "autopaste": "Auto-paste to cursor",
+        "clipboard": "Copy to clipboard only",
+        "hotkey_mode": "Hotkey Mode",
+        "hold_to_record": "Hold to record (release to stop)",
+        "toggle_record": "Press once to start / press again to stop",
+        "hotkey": "Hotkey",
+        "hotkey_help": "Type below, or click Capture and press your keys:",
+        "capture": "Capture",
+        "examples": "Examples:  ctrl+f9   alt+z   f8   ctrl+shift+space",
+        "device": "Compute Device",
+        "cpu": "CPU (universal)",
+        "cuda": "CUDA GPU (NVIDIA only)",
+        "cpu_threads": "CPU Threads:",
+        "general": "General",
+        "interface_language": "Interface Language",
+        "english": "English",
+        "chinese": "中文",
+        "start_at_login": "Start automatically when I log in",
+        "save_settings": "Save Settings",
+        "saved": "Settings saved!",
+        "restart_note": "Reopen settings to apply interface language changes.",
+        "tray_toggle": "Start / Stop Recording",
+        "tray_settings": "Settings",
+        "tray_about": "About",
+        "tray_quit": "Quit",
+        "about_body": "Offline speech-to-text\npowered by faster-whisper",
+        "title_hold": "Voice Input - Hold {hotkey} to record",
+        "title_toggle": "Voice Input - Press {hotkey} to start/stop",
+        "title_recording": "Recording... (release / press again to stop)",
+        "title_busy": "Transcribing...",
+        "title_loading": "Loading Whisper model...",
+    },
+    "zh": {
+        "settings_title": "Voice Input 設定",
+        "model": "Whisper 模型",
+        "download": "下載",
+        "redownload": "重新下載",
+        "resume_download": "繼續下載",
+        "delete_model": "刪除模型",
+        "language": "辨識語言",
+        "lang_auto": "自動偵測（建議）",
+        "lang_zh": "中文 / 廣東話",
+        "lang_en": "英文",
+        "chinese_output": "中文輸出",
+        "traditional": "繁體中文",
+        "simplified": "簡體中文",
+        "no_conversion": "不轉換",
+        "after_transcription": "辨識完成後",
+        "autopaste": "自動貼到游標位置",
+        "clipboard": "只複製到剪貼簿",
+        "hotkey_mode": "快捷鍵模式",
+        "hold_to_record": "按住錄音，放開停止",
+        "toggle_record": "按一次開始，再按一次停止",
+        "hotkey": "快捷鍵",
+        "hotkey_help": "可直接輸入，或按 Capture 後按下快捷鍵：",
+        "capture": "Capture",
+        "examples": "例子：ctrl+f9   alt+z   f8   ctrl+shift+space",
+        "device": "運算裝置",
+        "cpu": "CPU（通用）",
+        "cuda": "CUDA GPU（只限 NVIDIA）",
+        "cpu_threads": "CPU 執行緒：",
+        "general": "一般",
+        "interface_language": "介面語言",
+        "english": "English",
+        "chinese": "中文",
+        "start_at_login": "登入電腦後自動啟動",
+        "save_settings": "儲存設定",
+        "saved": "設定已儲存！",
+        "restart_note": "重新開啟設定後會套用介面語言。",
+        "tray_toggle": "開始 / 停止錄音",
+        "tray_settings": "設定",
+        "tray_about": "關於",
+        "tray_quit": "離開",
+        "about_body": "離線語音轉文字\npowered by faster-whisper",
+        "title_hold": "Voice Input - 按住 {hotkey} 錄音",
+        "title_toggle": "Voice Input - 按 {hotkey} 開始/停止",
+        "title_recording": "錄音中...（放開 / 再按一次停止）",
+        "title_busy": "轉文字中...",
+        "title_loading": "載入 Whisper 模型中...",
+    },
+}
+
+def tr(key):
+    lang = config.get("app_language", "en")
+    return TEXT.get(lang, TEXT["en"]).get(key, TEXT["en"].get(key, key))
+
+def _startup_command():
+    if getattr(_sys, "frozen", False):
+        if _IS_WIN:
+            return f'"{_sys.executable}"'
+        return [_sys.executable]
+    if _IS_WIN:
+        return f'"{_sys.executable}" "{os.path.abspath(__file__)}"'
+    return [_sys.executable, os.path.abspath(__file__)]
+
+def set_start_at_login(enabled):
+    try:
+        if _IS_WIN:
+            import winreg
+            key_path = r"Software\Microsoft\Windows\CurrentVersion\Run"
+            key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path, 0, winreg.KEY_SET_VALUE)
+            if enabled:
+                winreg.SetValueEx(key, "VoiceInput", 0, winreg.REG_SZ, _startup_command())
+            else:
+                try:
+                    winreg.DeleteValue(key, "VoiceInput")
+                except FileNotFoundError:
+                    pass
+            winreg.CloseKey(key)
+            return True
+        if _IS_MAC:
+            import plistlib
+            launch_dir = os.path.expanduser("~/Library/LaunchAgents")
+            os.makedirs(launch_dir, exist_ok=True)
+            plist_path = os.path.join(launch_dir, "com.travis-studio.voiceinput.plist")
+            if enabled:
+                data = {
+                    "Label": "com.travis-studio.voiceinput",
+                    "ProgramArguments": _startup_command(),
+                    "WorkingDirectory": BASE_DIR,
+                    "RunAtLoad": True,
+                }
+                with open(plist_path, "wb") as f:
+                    plistlib.dump(data, f)
+            elif os.path.exists(plist_path):
+                os.remove(plist_path)
+            return True
+    except Exception as e:
+        if tray_icon:
+            tray_icon.notify(APP_NAME, f"Startup setting failed: {str(e)[:80]}")
+    return False
 
 # ── Chinese conversion ────────────────────────────────────────
 _opencc_converter = {}
@@ -189,18 +342,18 @@ def _get_title():
     hk   = _fmt_hotkey(config.get("hotkey", "ctrl+f9"))
     mode = config.get("hotkey_mode", "hold")
     if mode == "hold":
-        return f"Voice Input - Hold {hk} to record"
+        return tr("title_hold").format(hotkey=hk)
     else:
-        return f"Voice Input - Press {hk} to start/stop"
+        return tr("title_toggle").format(hotkey=hk)
 
 def set_icon(state):
     if tray_icon is None:
         return
     titles = {
         "idle":      _get_title(),
-        "recording": "Recording... (release / press again to stop)",
-        "busy":      "Transcribing...",
-        "loading":   "Loading Whisper model...",
+        "recording": tr("title_recording"),
+        "busy":      tr("title_busy"),
+        "loading":   tr("title_loading"),
     }
     try:
         tray_icon.icon  = ICONS.get(state, ICONS["idle"])
@@ -336,7 +489,7 @@ MODEL_INFO = {
 
 def open_settings():
     win = tk.Tk()
-    win.title("Voice Input Settings")
+    win.title(tr("settings_title"))
     win.geometry("520x920")
     win.resizable(False, True)
     win.configure(bg="#f8f8f8")
@@ -368,8 +521,25 @@ def open_settings():
     def sep():
         ttk.Separator(f, orient="horizontal").pack(fill="x", padx=24, pady=4)
 
+    # ── General ──
+    section(tr("general"))
+    app_lang_var = tk.StringVar(value=config.get("app_language", "en"))
+    lang_ui_row = tk.Frame(f, bg="#f8f8f8")
+    lang_ui_row.pack(anchor="w", padx=24)
+    tk.Label(lang_ui_row, text=tr("interface_language"), bg="#f8f8f8",
+             font=("Arial", 10)).pack(side="left", padx=(0, 10))
+    for label, val in [(tr("english"), "en"), (tr("chinese"), "zh")]:
+        tk.Radiobutton(lang_ui_row, text=label, variable=app_lang_var, value=val,
+                       bg="#f8f8f8", font=("Arial", 10)).pack(side="left", padx=(0, 10))
+
+    start_at_login_var = tk.BooleanVar(value=bool(config.get("start_at_login", False)))
+    tk.Checkbutton(f, text=tr("start_at_login"), variable=start_at_login_var,
+                   bg="#f8f8f8", font=("Arial", 10)).pack(anchor="w", padx=24, pady=(8, 0))
+
+    sep()
+
     # ── Model ──
-    section("Whisper Model")
+    section(tr("model"))
     model_var = tk.StringVar(value=config["model"])
     info_var  = tk.StringVar(value=MODEL_INFO.get(config["model"], ""))
     row = tk.Frame(f, bg="#f8f8f8")
@@ -416,13 +586,13 @@ def open_settings():
     btn_row = tk.Frame(dl_frame, bg="#f8f8f8")
     btn_row.pack(anchor="w", pady=(6, 0))
 
-    dl_btn_var = tk.StringVar(value="Download")
+    dl_btn_var = tk.StringVar(value=tr("download"))
     dl_btn = tk.Button(btn_row, textvariable=dl_btn_var,
                        bg="#3b82f6", fg="white", font=("Arial", 9, "bold"),
                        relief="flat", padx=10, pady=3, cursor="hand2")
     dl_btn.pack(side="left")
 
-    del_btn = tk.Button(btn_row, text="Delete Model",
+    del_btn = tk.Button(btn_row, text=tr("delete_model"),
                         bg="#ef4444", fg="white", font=("Arial", 9, "bold"),
                         relief="flat", padx=10, pady=3, cursor="hand2")
     del_btn.pack(side="left", padx=(8, 0))
@@ -469,17 +639,17 @@ def open_settings():
         expected = MODEL_SIZES_BYTES.get(name, 0)
         if expected and cached >= expected * 0.97:
             dl_status_var.set(f"Already downloaded  ({fmt_size(cached)})")
-            dl_btn_var.set("Re-download")
+            dl_btn_var.set(tr("redownload"))
             dl_btn.config(bg="#6b7280")
         elif cached > 0:
             dl_status_var.set(
                 f"Partial download ({fmt_size(cached)} / {fmt_size(expected)}) - will resume"
             )
-            dl_btn_var.set("Resume Download")
+            dl_btn_var.set(tr("resume_download"))
             dl_btn.config(bg="#f59e0b")
         else:
             dl_status_var.set(f"Not downloaded yet  (~{fmt_size(expected)})")
-            dl_btn_var.set("Download")
+            dl_btn_var.set(tr("download"))
             dl_btn.config(bg="#3b82f6")
 
     update_dl_status()
@@ -625,7 +795,7 @@ def open_settings():
                 final = get_cached_size(name)
                 dl_status_var.set(f"Download complete!  ({fmt_size(final)})")
                 dl_status2_var.set("")
-                dl_btn_var.set("Re-download")
+                dl_btn_var.set(tr("redownload"))
                 dl_btn.config(bg="#6b7280")
 
             _dl_running[0] = False
@@ -638,55 +808,55 @@ def open_settings():
     sep()
 
     # ── Language ──
-    section("Language")
+    section(tr("language"))
     lang_var = tk.StringVar(value=config["language"])
     lang_row = tk.Frame(f, bg="#f8f8f8")
     lang_row.pack(anchor="w", padx=24)
-    for label, val in [("Auto detect (recommended)", "auto"), ("Chinese / Cantonese", "zh"), ("English", "en")]:
+    for label, val in [(tr("lang_auto"), "auto"), (tr("lang_zh"), "zh"), (tr("lang_en"), "en")]:
         tk.Radiobutton(lang_row, text=label, variable=lang_var, value=val,
                        bg="#f8f8f8", font=("Arial", 10)).pack(side="left", padx=(0, 10))
 
     sep()
 
     # ── Chinese output ──
-    section("Chinese Output")
+    section(tr("chinese_output"))
     chinese_var = tk.StringVar(value=config.get("chinese_output", "traditional"))
     chinese_row = tk.Frame(f, bg="#f8f8f8")
     chinese_row.pack(anchor="w", padx=24)
-    for label, val in [("正體字 Traditional", "traditional"), ("简体字 Simplified", "simplified"), ("No conversion", "none")]:
+    for label, val in [(tr("traditional"), "traditional"), (tr("simplified"), "simplified"), (tr("no_conversion"), "none")]:
         tk.Radiobutton(chinese_row, text=label, variable=chinese_var, value=val,
                        bg="#f8f8f8", font=("Arial", 10)).pack(side="left", padx=(0, 12))
 
     sep()
 
     # ── Paste mode ──
-    section("After transcription")
+    section(tr("after_transcription"))
     paste_var = tk.StringVar(value=config["paste_mode"])
     paste_row = tk.Frame(f, bg="#f8f8f8")
     paste_row.pack(anchor="w", padx=24)
-    for label, val in [("Auto-paste to cursor", "autopaste"), ("Copy to clipboard only", "clipboard")]:
+    for label, val in [(tr("autopaste"), "autopaste"), (tr("clipboard"), "clipboard")]:
         tk.Radiobutton(paste_row, text=label, variable=paste_var, value=val,
                        bg="#f8f8f8", font=("Arial", 10)).pack(side="left", padx=(0, 14))
 
     sep()
 
     # ── Hotkey mode ──
-    section("Hotkey Mode")
+    section(tr("hotkey_mode"))
     hkmode_var = tk.StringVar(value=config["hotkey_mode"])
     hkmode_row = tk.Frame(f, bg="#f8f8f8")
     hkmode_row.pack(anchor="w", padx=24)
-    tk.Radiobutton(hkmode_row, text="Hold to record (release to stop)",
+    tk.Radiobutton(hkmode_row, text=tr("hold_to_record"),
                    variable=hkmode_var, value="hold",
                    bg="#f8f8f8", font=("Arial", 10)).pack(anchor="w")
-    tk.Radiobutton(hkmode_row, text="Press once to start / press again to stop",
+    tk.Radiobutton(hkmode_row, text=tr("toggle_record"),
                    variable=hkmode_var, value="toggle",
                    bg="#f8f8f8", font=("Arial", 10)).pack(anchor="w")
 
     sep()
 
     # ── Hotkey ──
-    section("Hotkey")
-    tk.Label(f, text="Type below, or click Capture and press your keys:",
+    section(tr("hotkey"))
+    tk.Label(f, text=tr("hotkey_help"),
              bg="#f8f8f8", fg="#555", font=("Arial", 9)).pack(anchor="w", padx=24)
 
     hk_frame  = tk.Frame(f, bg="#f8f8f8")
@@ -729,22 +899,22 @@ def open_settings():
     capture_hook = keyboard.hook(on_key_capture)
     hk_entry.bind("<KeyRelease>", stop_capture)
 
-    tk.Button(hk_frame, text="Capture",
+    tk.Button(hk_frame, text=tr("capture"),
               command=start_capture,
               bg="#6366f1", fg="white", font=("Arial", 9, "bold"),
               relief="flat", padx=8, pady=3, cursor="hand2").pack(side="left", padx=4)
 
-    tk.Label(f, text="Examples:  ctrl+f9   alt+z   f8   ctrl+shift+space",
+    tk.Label(f, text=tr("examples"),
              bg="#f8f8f8", fg="#888", font=("Arial", 8)).pack(anchor="w", padx=24, pady=(0, 4))
 
     sep()
 
     # ── Device ──
-    section("Compute Device")
+    section(tr("device"))
     device_var = tk.StringVar(value=config["device"])
     dev_row = tk.Frame(f, bg="#f8f8f8")
     dev_row.pack(anchor="w", padx=24)
-    for label, val in [("CPU (universal)", "cpu"), ("CUDA GPU (NVIDIA only)", "cuda")]:
+    for label, val in [(tr("cpu"), "cpu"), (tr("cuda"), "cuda")]:
         tk.Radiobutton(dev_row, text=label, variable=device_var, value=val,
                        bg="#f8f8f8", font=("Arial", 10)).pack(side="left", padx=(0, 14))
 
@@ -754,7 +924,7 @@ def open_settings():
     cpu_var = tk.IntVar(value=thread_val if thread_val > 0 else max_threads)
     thread_row = tk.Frame(f, bg="#f8f8f8")
     thread_row.pack(anchor="w", padx=24, pady=(6, 0))
-    tk.Label(thread_row, text="CPU Threads:", bg="#f8f8f8", font=("Arial", 9)).pack(side="left")
+    tk.Label(thread_row, text=tr("cpu_threads"), bg="#f8f8f8", font=("Arial", 9)).pack(side="left")
     thread_label = tk.Label(thread_row, text=str(cpu_var.get()), bg="#f8f8f8",
                             font=("Arial", 9, "bold"), width=3)
     thread_label.pack(side="left", padx=4)
@@ -783,14 +953,18 @@ def open_settings():
         config["hotkey"]         = hk_var.get().strip().lower()
         config["device"]         = device_var.get()
         config["cpu_threads"]    = cpu_var.get()
+        config["start_at_login"] = bool(start_at_login_var.get())
+        config["app_language"]   = app_lang_var.get()
+        set_start_at_login(config["start_at_login"])
         global whisper_model
         whisper_model = None   # force reload with new thread count
         save_config(config)
         register_hotkey()
-        messagebox.showinfo("Saved", "Settings saved!")
+        set_icon("idle")
+        messagebox.showinfo(tr("saved"), f"{tr('saved')}\n\n{tr('restart_note')}")
         win.destroy()
 
-    tk.Button(bottom, text="Save Settings", command=save_and_close,
+    tk.Button(bottom, text=tr("save_settings"), command=save_and_close,
               bg="#22c55e", fg="white", font=("Arial", 11, "bold"),
               relief="flat", padx=24, pady=8, cursor="hand2").pack()
 
@@ -810,7 +984,7 @@ def show_about():
     messagebox.showinfo(
         f"{APP_NAME} v{APP_VERSION}",
         f"{APP_NAME}  v{APP_VERSION}\n\n"
-        f"Offline speech-to-text\npowered by faster-whisper\n\n"
+        f"{tr('about_body')}\n\n"
         f"Author : {APP_AUTHOR}\n"
         f"Email  : {APP_EMAIL}"
     )
@@ -843,21 +1017,21 @@ def build_tray():
 
     menu = pystray.Menu(
         pystray.MenuItem(
-            "Start / Stop Recording",
+            tr("tray_toggle"),
             on_tray_click,
             default=True      # triggers on left-click
         ),
         pystray.Menu.SEPARATOR,
         pystray.MenuItem(
-            "Settings",
+            tr("tray_settings"),
             lambda icon, item: run_ui_action(open_settings)
         ),
         pystray.MenuItem(
-            f"About {APP_NAME}",
+            f"{tr('tray_about')} {APP_NAME}",
             lambda icon, item: run_ui_action(show_about)
         ),
         pystray.Menu.SEPARATOR,
-        pystray.MenuItem("Quit", quit_app)
+        pystray.MenuItem(tr("tray_quit"), quit_app)
     )
     tray_icon = pystray.Icon(
         APP_NAME,
@@ -869,6 +1043,8 @@ def build_tray():
 
 # ── Main ─────────────────────────────────────────────────────
 def main():
+    if config.get("start_at_login"):
+        set_start_at_login(True)
     register_hotkey()
     icon = build_tray()
     # Pre-load model in background so first keypress is instant
