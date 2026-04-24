@@ -33,7 +33,7 @@ Building from source is for developers or advanced users. It creates a local Pyt
 
 Requirements:
 
-- Python 3.12
+- Python 3.12: https://www.python.org/downloads/release/python-3120/
 - Windows `py` launcher
 
 Build:
