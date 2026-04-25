@@ -106,6 +106,7 @@ Mode: Hold to record
 Output: Copy to clipboard
 Model: large-v3
 Device: CPU
+Compute type: Auto
 Start at login: Off
 Interface language: English
 ```

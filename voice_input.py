@@ -60,6 +60,7 @@ DEFAULT_CONFIG = {
     "language":       "auto",
     "paste_mode":     "clipboard",
     "device":         "cpu",
+    "compute_type":   "auto",
     "hotkey_mode":    "hold",
     "hotkey":         "ctrl+f9",
     "chinese_output": "traditional",  # traditional / simplified / none
@@ -114,6 +115,12 @@ TEXT = {
         "device": "Compute Device",
         "cpu": "CPU (universal)",
         "cuda": "CUDA GPU (NVIDIA only)",
+        "compute_type": "Compute Type",
+        "compute_auto": "Auto (compatible)",
+        "compute_int8": "int8 - recommended for older GPUs",
+        "compute_float16": "float16 - newer GPUs",
+        "compute_float32": "float32 - compatibility fallback",
+        "compute_int8_float16": "int8_float16 - mixed precision",
         "cpu_threads": "CPU Threads:",
         "general": "General",
         "interface_language": "Interface Language",
@@ -162,6 +169,12 @@ TEXT = {
         "device": "運算裝置",
         "cpu": "CPU（通用）",
         "cuda": "CUDA GPU（只限 NVIDIA）",
+        "compute_type": "運算精度",
+        "compute_auto": "自動（兼容）",
+        "compute_int8": "int8 - 舊 GPU 建議",
+        "compute_float16": "float16 - 較新 GPU",
+        "compute_float32": "float32 - 兼容後備",
+        "compute_int8_float16": "int8_float16 - 混合精度",
         "cpu_threads": "CPU 執行緒：",
         "general": "一般",
         "interface_language": "介面語言",
@@ -234,6 +247,14 @@ def set_start_at_login(enabled):
             tray_icon.notify(APP_NAME, f"Startup setting failed: {str(e)[:80]}")
     return False
 
+def get_compute_type():
+    selected = config.get("compute_type", "auto")
+    if selected != "auto":
+        return selected
+    if config.get("device") == "cuda":
+        return "int8"
+    return "int8"
+
 # ── Chinese conversion ────────────────────────────────────────
 _opencc_converter = {}
 
@@ -286,7 +307,7 @@ def ensure_model():
             whisper_model = WhisperModel(
                 config["model"],
                 device=config["device"],
-                compute_type="float16" if config["device"] == "cuda" else "int8",
+                compute_type=get_compute_type(),
                 cpu_threads=cpu_threads,
                 num_workers=1
             )
@@ -918,6 +939,33 @@ def open_settings():
         tk.Radiobutton(dev_row, text=label, variable=device_var, value=val,
                        bg="#f8f8f8", font=("Arial", 10)).pack(side="left", padx=(0, 14))
 
+    compute_var = tk.StringVar(value=config.get("compute_type", "auto"))
+    compute_row = tk.Frame(f, bg="#f8f8f8")
+    compute_row.pack(anchor="w", padx=24, pady=(6, 0))
+    tk.Label(compute_row, text=tr("compute_type"), bg="#f8f8f8",
+             font=("Arial", 9)).pack(side="left", padx=(0, 8))
+    compute_values = [
+        ("auto", tr("compute_auto")),
+        ("int8", tr("compute_int8")),
+        ("float16", tr("compute_float16")),
+        ("float32", tr("compute_float32")),
+        ("int8_float16", tr("compute_int8_float16")),
+    ]
+    compute_labels = [label for _, label in compute_values]
+    compute_label_to_value = {label: value for value, label in compute_values}
+    compute_value_to_label = {value: label for value, label in compute_values}
+    compute_display_var = tk.StringVar(
+        value=compute_value_to_label.get(compute_var.get(), tr("compute_auto"))
+    )
+    compute_menu = ttk.Combobox(
+        compute_row,
+        textvariable=compute_display_var,
+        values=compute_labels,
+        state="readonly",
+        width=34
+    )
+    compute_menu.pack(side="left")
+
     # CPU threads slider
     max_threads = os.cpu_count() or 8
     thread_val  = config.get("cpu_threads", 0)
@@ -952,6 +1000,7 @@ def open_settings():
         config["hotkey_mode"]    = hkmode_var.get()
         config["hotkey"]         = hk_var.get().strip().lower()
         config["device"]         = device_var.get()
+        config["compute_type"]   = compute_label_to_value.get(compute_display_var.get(), "auto")
         config["cpu_threads"]    = cpu_var.get()
         config["start_at_login"] = bool(start_at_login_var.get())
         config["app_language"]   = app_lang_var.get()

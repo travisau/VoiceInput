@@ -58,6 +58,7 @@ if exist VoiceInput.exe (
         >> config.json echo   "language": "auto",
         >> config.json echo   "paste_mode": "clipboard",
         >> config.json echo   "device": "cpu",
+        >> config.json echo   "compute_type": "auto",
         >> config.json echo   "hotkey_mode": "hold",
         >> config.json echo   "hotkey": "ctrl+f9",
         >> config.json echo   "chinese_output": "traditional",

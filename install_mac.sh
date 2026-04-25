@@ -60,6 +60,7 @@ if [ -f "VoiceInput" ]; then
   "language": "auto",
   "paste_mode": "clipboard",
   "device": "cpu",
+  "compute_type": "auto",
   "hotkey_mode": "hold",
   "hotkey": "ctrl+f9",
   "chinese_output": "traditional",
