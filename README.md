@@ -113,6 +113,40 @@ Interface language: English
 
 The first model download can be large. `large-v3` is about 3GB.
 
+## GPU / CUDA Notes
+
+CPU mode works without CUDA.
+
+CUDA GPU mode requires NVIDIA CUDA libraries installed on Windows:
+
+- CUDA 12.x Toolkit
+- cuBLAS for CUDA 12
+- cuDNN 9 for CUDA 12
+
+Install CUDA/cuDNN from NVIDIA official sources:
+
+- CUDA Toolkit: https://developer.nvidia.com/cuda-downloads
+- cuDNN for Windows: https://docs.nvidia.com/deeplearning/cudnn/latest/installation/windows.html
+
+If you see this error, CUDA libraries are missing or not in `PATH`:
+
+```text
+Library cublas64_12.dll is not found or cannot be loaded
+```
+
+After installing CUDA/cuDNN, restart Windows and check:
+
+```powershell
+Get-Command cublas64_12.dll
+```
+
+For older GPUs such as Tesla P4, use:
+
+```text
+Device: CUDA GPU
+Compute type: Auto or int8
+```
+
 ## Repository Notes
 
 Do not commit generated runtime files:
