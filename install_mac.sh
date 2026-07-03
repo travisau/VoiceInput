@@ -63,7 +63,8 @@ if [ -f "VoiceInput" ]; then
   "compute_type": "auto",
   "hotkey_mode": "hold",
   "hotkey": "ctrl+f9",
-  "chinese_output": "traditional",
+  "chinese_output": "traditional_tw",
+  "cantonese_mode": false,
   "cpu_threads": 0,
   "start_at_login": false,
   "app_language": "en"
