@@ -63,11 +63,21 @@ DEFAULT_CONFIG = {
     "compute_type":   "auto",
     "hotkey_mode":    "hold",
     "hotkey":         "ctrl+f9",
-    "chinese_output": "traditional",  # traditional / simplified / none
+    "chinese_output": "traditional_tw",  # traditional_tw / traditional_hk / simplified / none
+    "cantonese_mode": False,          # bias Whisper toward spoken Cantonese
     "cpu_threads":    0,              # 0 = auto (use all cores)
     "start_at_login": False,
     "app_language":   "en"            # en / zh
 }
+
+# Prompt fed to Whisper when Cantonese mode is on. The mix of spoken-Cantonese
+# characters nudges the decoder toward 口語 output instead of 書面語.
+CANTONESE_PROMPT = (
+    "以下係廣東話口語對話，請直接用粵語口語字寫出嚟，唔好寫成書面語（國語／普通話）。例如："
+    "嘅、咗、喺、佢、唔、係、冇、嚟、嗰、啲、咩、點解、之嘛、"
+    "搵、嘢、咁、邊、囉、噉、唧、嘥、畀、嗮、㗎、"
+    "唔好、邊度、點樣、我哋、你哋、佢哋、呢個、玩、食飯、睇嘢。"
+)
 
 def load_config():
     if os.path.exists(CONFIG_FILE):
@@ -76,9 +86,10 @@ def load_config():
         for k, v in DEFAULT_CONFIG.items():
             if k not in cfg:
                 cfg[k] = v
-        # Migrate old "none" value to "traditional"
-        if cfg.get("chinese_output") == "none":
-            cfg["chinese_output"] = "traditional"
+        # Preserve "none" value to allow disabling conversion
+        # Migrate old generic "traditional" to Taiwan variant
+        if cfg.get("chinese_output") == "traditional":
+            cfg["chinese_output"] = "traditional_tw"
         return cfg
     return DEFAULT_CONFIG.copy()
 
@@ -99,9 +110,11 @@ TEXT = {
         "lang_zh": "Chinese / Cantonese",
         "lang_en": "English",
         "chinese_output": "Chinese Output",
-        "traditional": "Traditional Chinese",
+        "traditional_tw": "Traditional (Taiwan)",
+        "traditional_hk": "Traditional (Hong Kong)",
         "simplified": "Simplified Chinese",
         "no_conversion": "No conversion",
+        "cantonese_mode": "Cantonese spoken-style output (keep 口語 like 嘅/咗/喺/冇)",
         "after_transcription": "After transcription",
         "autopaste": "Auto-paste to cursor",
         "clipboard": "Copy to clipboard only",
@@ -153,9 +166,11 @@ TEXT = {
         "lang_zh": "中文 / 廣東話",
         "lang_en": "英文",
         "chinese_output": "中文輸出",
-        "traditional": "繁體中文",
+        "traditional_tw": "繁體（台灣）",
+        "traditional_hk": "繁體（香港）",
         "simplified": "簡體中文",
         "no_conversion": "不轉換",
+        "cantonese_mode": "廣東話口語模式（保留嘅／咗／喺／冇等口語字）",
         "after_transcription": "辨識完成後",
         "autopaste": "自動貼到游標位置",
         "clipboard": "只複製到剪貼簿",
@@ -258,21 +273,46 @@ def get_compute_type():
 # ── Chinese conversion ────────────────────────────────────────
 _opencc_converter = {}
 
-def convert_chinese(text, mode):
-    """mode: 'traditional' | 'simplified' | 'none'"""
+def convert_chinese(text, mode, cantonese=False):
+    """mode: 'traditional_tw' | 'traditional_hk' | 'simplified' | 'none'
+
+    Also accepts legacy value 'traditional' (treated as traditional_tw).
+    """
     if mode == "none" or not text:
+        return text
+    # NOTE: this opencc library auto-appends ".json" to the config name.
+    # Passing "s2twp.json" would raise FileNotFoundError and silently return
+    # raw (usually Simplified) Whisper output. Always use the bare name.
+    cfg_map = {
+        "traditional_tw": "s2twp",   # Simplified → Traditional (Taiwan, phrase-aware)
+        "traditional_hk": "s2hk",    # Simplified → Traditional (Hong Kong)
+        "traditional":    "s2twp",   # legacy alias
+        "simplified":     "tw2sp",   # Traditional → Simplified (phrase-aware)
+    }
+    # In Cantonese mode we prefer char-only mappings so the phrase table
+    # doesn't rewrite 粵語/港式 vocabulary. s2hk already preserves 港式 words,
+    # so it's safe; we only swap out the Taiwan variant.
+    if cantonese:
+        cfg_map["traditional_tw"] = "s2t"
+        cfg_map["traditional"]    = "s2t"
+        cfg_map["simplified"]     = "t2s"
+    cfg_name = cfg_map.get(mode)
+    if not cfg_name:
         return text
     try:
         import opencc
-        key = mode
+        key = f"{mode}-{'yue' if cantonese else 'std'}"
         if key not in _opencc_converter:
-            cfg_map = {
-                "traditional": "s2twp.json",   # Simplified → Traditional (Taiwan)
-                "simplified":  "tw2sp.json",    # Traditional → Simplified
-            }
-            _opencc_converter[key] = opencc.OpenCC(cfg_map[key])
+            _opencc_converter[key] = opencc.OpenCC(cfg_name)
         return _opencc_converter[key].convert(text)
-    except Exception:
+    except Exception as e:
+        try:
+            log_dir = os.path.join(BASE_DIR, "Data")
+            os.makedirs(log_dir, exist_ok=True)
+            with open(os.path.join(log_dir, "error.log"), "a", encoding="utf-8") as f:
+                f.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} - OpenCC error: {str(e)}\n")
+        except Exception:
+            pass
         return text   # fallback: return as-is if opencc not installed
 
 # ── Global state ─────────────────────────────────────────────
@@ -424,15 +464,21 @@ def stop_and_transcribe():
 
     try:
         lang = None if config["language"] == "auto" else config["language"]
+        cantonese = bool(config.get("cantonese_mode", False))
+        # Force lang=zh when Cantonese mode is on so Whisper doesn't drift to
+        # English on short utterances. (Whisper has no separate 'yue' code.)
+        if cantonese and lang is None:
+            lang = "zh"
         t_start = time.time()
         segments, _ = whisper_model.transcribe(
             tmp.name, language=lang, beam_size=5,
+            initial_prompt=CANTONESE_PROMPT if cantonese else None,
             vad_filter=True,
             vad_parameters=dict(min_silence_duration_ms=300)
         )
         text    = "".join(seg.text for seg in segments).strip()
         elapsed = time.time() - t_start
-        text    = convert_chinese(text, config.get("chinese_output", "traditional"))
+        text    = convert_chinese(text, config.get("chinese_output", "traditional"), cantonese=cantonese)
 
         device_label = "GPU" if config["device"] == "cuda" else "CPU"
         notify_sub   = f"{device_label}  ·  {elapsed:.1f}s"
@@ -841,12 +887,25 @@ def open_settings():
 
     # ── Chinese output ──
     section(tr("chinese_output"))
-    chinese_var = tk.StringVar(value=config.get("chinese_output", "traditional"))
+    # Legacy "traditional" → traditional_tw for the UI selector
+    _co_val = config.get("chinese_output", "traditional_tw")
+    if _co_val == "traditional":
+        _co_val = "traditional_tw"
+    chinese_var = tk.StringVar(value=_co_val)
     chinese_row = tk.Frame(f, bg="#f8f8f8")
     chinese_row.pack(anchor="w", padx=24)
-    for label, val in [(tr("traditional"), "traditional"), (tr("simplified"), "simplified"), (tr("no_conversion"), "none")]:
+    for label, val in [
+        (tr("traditional_tw"), "traditional_tw"),
+        (tr("traditional_hk"), "traditional_hk"),
+        (tr("simplified"),     "simplified"),
+        (tr("no_conversion"),  "none"),
+    ]:
         tk.Radiobutton(chinese_row, text=label, variable=chinese_var, value=val,
-                       bg="#f8f8f8", font=("Arial", 10)).pack(side="left", padx=(0, 12))
+                       bg="#f8f8f8", font=("Arial", 10)).pack(side="left", padx=(0, 10))
+
+    cantonese_var = tk.BooleanVar(value=bool(config.get("cantonese_mode", False)))
+    tk.Checkbutton(f, text=tr("cantonese_mode"), variable=cantonese_var,
+                   bg="#f8f8f8", font=("Arial", 10)).pack(anchor="w", padx=24, pady=(6, 0))
 
     sep()
 
@@ -996,6 +1055,7 @@ def open_settings():
         config["model"]          = model_var.get()
         config["language"]       = lang_var.get()
         config["chinese_output"] = chinese_var.get()
+        config["cantonese_mode"] = bool(cantonese_var.get())
         config["paste_mode"]     = paste_var.get()
         config["hotkey_mode"]    = hkmode_var.get()
         config["hotkey"]         = hk_var.get().strip().lower()

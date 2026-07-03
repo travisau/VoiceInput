@@ -11,7 +11,9 @@ Voice Input runs quietly from the system tray / menu bar. Hold a hotkey, speak, 
 - Tray / menu bar app with quick settings
 - Hold-to-record or toggle recording mode
 - Clipboard-only or auto-paste output
-- Traditional / Simplified Chinese conversion
+- Traditional / Simplified Chinese conversion (Taiwan/Hong Kong variants)
+- Optimized Cantonese Spoken Style Mode (廣東話口語模式) for natural Cantonese transcription
+- Robust Chinese OpenCC character conversion with error logging
 - English / Chinese interface language
 - Optional start at login
 - Local model cache stored beside the app
